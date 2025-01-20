@@ -63,6 +63,15 @@ namespace livelybot_serial
             ROS_ERROR("Faile to get params Serial_Type");
         }
 
+        if (n.getParam("robot/control_type", control_type))
+        {
+            // ROS_INFO("Got params ontrol_type: %f",SDK_version);
+        }
+        else
+        {
+            ROS_ERROR("Faile to get params control_type");
+        }
+
         ROS_INFO("\033[1;32mGot params SDK_version: %.1fv\033[0m", SDK_version2);
         ROS_INFO("\033[1;32mThe robot name is %s\033[0m", robot_name.c_str());
         ROS_INFO("\033[1;32mThe robot has %d CANboards\033[0m", CANboard_num);
@@ -381,10 +390,28 @@ namespace livelybot_serial
     
     void robot::send_get_motor_state_cmd()
     {
+    #if 0 
         for (canboard &cb : CANboards)
         {
             cb.send_get_motor_state_cmd();
         }
+    #else
+        if (control_type != 0)
+        {
+            for (motor *m : Motors)
+            {
+                m->fresh_cmd_int16(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+            }
+        }
+        else
+        {
+            for (canboard &cb : CANboards)
+            {
+                cb.send_get_motor_state_cmd();
+            }
+        }
+        motor_send_2();
+    #endif
     }
 
 

@@ -30,10 +30,12 @@ namespace livelybot_serial
         std::vector<canboard> CANboards;
         std::vector<std::string> str;
         std::vector<lively_serial *> ser;
-        float SDK_version2 = 3.7; // SDK版本
+        float SDK_version2 = 3.8; // SDK版本
         std::atomic<bool> publish_joint_state;
         ros::Publisher joint_state_pub_;
         std::thread pub_thread_;
+
+        int control_type;
 
 #ifdef DYNAMIC_CONFIG_ROBOT
         std::vector<double> config_slope_posistion;
