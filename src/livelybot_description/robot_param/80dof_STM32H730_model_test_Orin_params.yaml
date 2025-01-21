@@ -4,6 +4,7 @@ robot:
   arm_dof: 0
   leg_dof: 6
   Serial_Type: "/dev/ttyACM"
+  Seial_baudrate: 4000000
   CAN_Type: "CAN-FD BRS" # "CAN-FD"\"CAN-FD BRS"\"CAN 2.0B"
   control_type: 9  # 运行模式
   CANboard_type: "STM32 H730"
