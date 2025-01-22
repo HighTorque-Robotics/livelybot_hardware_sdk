@@ -1,0 +1,131 @@
+robot:
+  SDK_version: 2
+  robot_name: "HuangPx HECTOR"
+  arm_dof: 0
+  leg_dof: 5
+  Serial_Type: "/dev/ttyACM"
+  Seial_baudrate: 4000000
+  CAN_Type: "CAN-FD BRS" # "CAN-FD"\"CAN-FD BRS"\"CAN 2.0B"
+  control_type: 9  # 运行模式
+  CANboard_type: "STM32 H730"
+  CANboard_num: 1
+  CANboard:
+    No_1_CANboard:
+      CANport_num: 2
+      CANport:
+        CANport_1:
+          motor_num: 5
+          motor:
+            motor1:
+                type: 5
+                id: 1
+                name: "L_toe_up"
+                num: 1
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor2:
+                type: 3
+                id: 2
+                name: "L_calf"
+                num: 2
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor3:
+                type: 3
+                id: 3
+                name: "L_hip"
+                num: 3
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor4:
+                type: 3
+                id: 4
+                name: "L_hip2"
+                num: 4
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor5:
+                type: 3
+                id: 5
+                name: "L_thigh"
+                num: 5
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+        CANport_2:
+          motor_num: 5
+          motor:
+            motor1:
+                type: 5
+                id: 1
+                name: "R_toe_up"
+                num: 1
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor2:
+                type: 3
+                id: 2
+                name: "R_calf"
+                num: 2
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor3:
+                type: 3
+                id: 3
+                name: "R_hip"
+                num: 3
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor4:
+                type: 3
+                id: 4
+                name: "R_hip2"
+                num: 4
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
+            motor5:
+                type: 3
+                id: 5
+                name: "R_thigh"
+                num: 5
+                pos_limit_enable: false
+                pos_upper: 5
+                pos_lower: -5
+                tor_limit_enable: false
+                tor_upper: 5
+                tor_lower: -3
