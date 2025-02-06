@@ -412,15 +412,6 @@ namespace livelybot_serial
         }
         motor_send_2();
     #endif
-
-        for (int i = 0; i < 3; i++)
-        {
-            set_reset();
-            motor_send_2();
-            ros::Duration(0.001).sleep();
-        }
-
-        ros::Duration(0.1).sleep();
     }
 
 
@@ -482,6 +473,15 @@ namespace livelybot_serial
             // exit(-1);
             ros::Duration(1).sleep();
         }
+
+        for (int i = 0; i < 3; i++)
+        {
+            set_reset();
+            motor_send_2();
+            ros::Duration(0.001).sleep();
+        }
+
+        ros::Duration(0.1).sleep();
     }
 
 
