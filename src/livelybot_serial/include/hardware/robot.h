@@ -30,7 +30,7 @@ namespace livelybot_serial
         std::vector<canboard> CANboards;
         std::vector<std::string> str;
         std::vector<lively_serial *> ser;
-        float SDK_version2 = 3.8; // SDK版本
+        float SDK_version2 = 3.9; // SDK版本
         std::atomic<bool> publish_joint_state;
         ros::Publisher joint_state_pub_;
         std::thread pub_thread_;
