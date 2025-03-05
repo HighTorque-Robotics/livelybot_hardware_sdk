@@ -79,26 +79,45 @@
 1. IMU设备测试
     * 执行测试脚本：`./test_yesense_imu.sh`;
     * 在启动的RVIZ界面，观察IMU的姿态。
+    
 2. 电机控制测试1
     * 准备主控板和电机若干；
     * 根据配置文件`lively_description/robot_param/1dof_STM32H730_model_test_Orin_params.yaml`中的配置信息，在can0上连接1个电机，电机ID为`1`。
     * 修改配置文件`livelybot_description.launch`中的参数，将`dof_type`设置为`1`；
     * 执行电机测试程序`./test_motor_run.sh`。
+    
 3. 电机控制测试2
     * 准备主控板和电机若干；
     * 根据配置文件`lively_description/robot_param/6dof_STM32H730_model_test_Orin_params.yaml`中的配置信息，在can0上连接3个电机，电机ID分别为`1,2,3`，在can1总线上连接3个电机，电机ID分别为`1,2,3`。
     * 修改配置文件`livelybot_description.launch`中的参数，将`dof_type`设置为`6`；
     * 执行电机测试程序`./test_motor_run.sh`。
+    
 4. 电机数据反馈测试
     * 准备主控板和电机若干；
     * 根据配置文件`lively_description/robot_param/6dof_STM32H730_model_test_Orin_params.yaml`中的配置信息，在can0上连接3个电机，电机ID分别为`1,2,3`，在can1总线上连接3个电机，电机ID分别为`1,2,3`。
     * 修改配置文件`livelybot_description.launch`中的参数，将`dof_type`设置为`6`；
     * 执行电机测试程序`./test_motor_feedback.sh`。
+    
 5. 背板屏测试
     * 在`livelybot_hardware_sdk`目录下，执行命令`source devel/setup.bash`;
-    * 连接好背板屏硬件之后，执行如下命令，运行`livelybot_oled_hd_test`节点;
-    ```rosrun livelybot_oled livelybot_oled_hd_test```
+    
+    * 连接好背板屏硬件之后，执行如下命令，运行`livelybot_oled_hd_test`节点：
+      ```rosrun livelybot_oled livelybot_oled_hd_test```
+    
     * 背板屏所有界面都会显示正常的内容。
+    
+      > [!NOTE]
+      >
+      > 当你使用的是香橙派5 Pro上位机主板时，如果你遇到无法打开串口的问题，请修改串口路径：
+      >
+      > 1. 打开文件```src\livelybot_oled\include\sensor_actuator_status.hpp```
+      >
+      > 2. 修改第10-11行```#define OLED_UART_DEV_NAME```为"/dev/ttyS4"
+      >
+      > 3. 在工作空间下重新执行catkin_make
+      > 4. 重新运行`livelybot_oled_hd_test`节点：
+      >    ```rosrun livelybot_oled livelybot_oled_hd_test```
+      
 
 ### 六、IMU信息读取
 1. 在`livelybot_hardware_sdk`目录下，执行命令`source devel/setup.bash`;

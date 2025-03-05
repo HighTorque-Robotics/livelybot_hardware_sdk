@@ -8,6 +8,7 @@
 #include <vector>
 
 #define OLED_UART_DEV_NAME "/dev/ttyACM"
+// #define OLED_UART_DEV_NAME "/dev/ttyS4"
 
 typedef struct
 {
