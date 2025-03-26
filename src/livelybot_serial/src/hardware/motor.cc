@@ -153,6 +153,10 @@ inline int16_t motor::tqe_float2int(float in_data, motor_type motor_type)
         return (int16_t)((in_data + 0.034809) / 0.00533);
     case motor_type::_4438_32:
         return (int16_t)((in_data + 0.083) / 0.005584f);
+    case motor_type::_5047_36_2: 
+        return (int16_t)((in_data + 0.35) / 0.00803f);
+    case motor_type::_6056_36_2:
+        return (int16_t)((in_data + 0.1) / 0.00677f);
     default:
         ROS_ERROR("motor type setting error");
         return int16_t();
@@ -373,6 +377,10 @@ inline float motor::tqe_int2float(int16_t in_data, motor_type type)
         return (float)(in_data * 0.0055); // 未测
     case (motor_type::_7136_7):
         return (float)(in_data * 0.006); // 未测
+    case (motor_type::_5047_36_2):
+        return (float)(in_data * 0.00803) - 0.35;
+    case (motor_type::_6056_36_2):
+        return (float)(in_data * 0.006077) - 0.1;
     default:
         return float();
     }
