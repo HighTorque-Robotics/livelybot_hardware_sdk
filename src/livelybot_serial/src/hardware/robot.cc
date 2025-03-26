@@ -72,7 +72,7 @@ namespace livelybot_serial
             ROS_ERROR("Faile to get params control_type");
         }
 
-        ROS_INFO("\033[1;32mGot params SDK_version: %.1fv\033[0m", SDK_version2);
+        ROS_INFO("\033[1;32mGot params SDK_version: v%s\033[0m", SDK_version2.c_str());
         ROS_INFO("\033[1;32mThe robot name is %s\033[0m", robot_name.c_str());
         ROS_INFO("\033[1;32mThe robot has %d CANboards\033[0m", CANboard_num);
         ROS_INFO("\033[1;32mThe CANboard type is %s\033[0m", CANboard_type.c_str());
