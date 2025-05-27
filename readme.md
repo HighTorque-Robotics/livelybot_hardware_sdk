@@ -27,13 +27,13 @@
 1. 克隆代码到本地
 
     ```
-    git clone https://github.com/HighTorque-Robotics/livelybot_robot.git
+    git clone https://github.com/HighTorque-Robotics/livelybot_hardware_sdk
     ```
 
 2. 编译
 
     ```
-    cd livelybot_robot
+    cd livelybot_hardware_sdk
     catkin_make
     ```
 
