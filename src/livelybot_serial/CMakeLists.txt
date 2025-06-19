@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(livelybot_serial)
 
+
+# add_definitions(-DDEBUG)
+
 # Find catkin
 find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -18,6 +21,8 @@ set(serial_SRCS
     src/hardware/canport.cc
     src/hardware/canboard.cc
     src/hardware/robot.cc
+    src/crc/crc8.cc
+    src/crc/crc16.cc
 )
 
 
@@ -27,7 +32,7 @@ generate_dynamic_reconfigure_options(
 
 catkin_package(
     LIBRARIES ${PROJECT_NAME}
-    INCLUDE_DIRS include
+    INCLUDE_DIRS include include/crc include/hardware
     DEPENDS rt pthread
     CATKIN_DEPENDS roscpp std_msgs livelybot_msg serial dynamic_reconfigure
 )
@@ -38,6 +43,8 @@ endif()
 
 include_directories(
   include
+  include/crc
+  include/hardware
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -47,31 +54,22 @@ target_link_libraries(livelybot_serial ${catkin_LIBRARIES} rt pthread ${SERIALPO
 
 link_directories(lib)
 
-# # test
-add_executable(ik_run test/test_ik_run.cpp)
-target_link_libraries(ik_run livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
+install(DIRECTORY cfg/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cfg
+)
+install(TARGETS ${PROJECT_NAME}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+)
 
-add_executable(test_motor test/test_motor.cpp)
-target_link_libraries(test_motor livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN ".svn" EXCLUDE
+)
+# 安装头文件到 install/include
+install(DIRECTORY include/ DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
 
-add_executable(test_reset_zero test/test_reset_zero.cpp)
-target_link_libraries(test_reset_zero livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
-
-add_executable(test_feedback test/test_feedback.cpp)
-target_link_libraries(test_feedback livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
-
-add_executable(test_motor_feedback test/test_motor_feedback.cpp)
-target_link_libraries(test_motor_feedback livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
-
-add_executable(test_motor_run test/test_motor_run.cpp)
-target_link_libraries(test_motor_run livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
-
-add_executable(test_jump test/test_jump.cpp)
-target_link_libraries(test_jump livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
-
-add_executable(test_reconfigure test/test_reconfigure.cpp)
-target_link_libraries(test_reconfigure livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
-
-add_executable(test_timeout test/test_timeout.cpp)
-target_link_libraries(test_timeout livelybot_serial ${catkin_LIBRARIES} ${SERIALPORT_LIBRARY})
-
+install(TARGETS ${PROJECT_NAME}
+        ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+        LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+        RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

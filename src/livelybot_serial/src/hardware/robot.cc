@@ -1,4 +1,5 @@
-#include "hardware/robot.h"
+#include "robot.h"
+
 
 
 namespace livelybot_serial
@@ -38,22 +39,7 @@ namespace livelybot_serial
         {
             ROS_ERROR("Faile to get params CANboard_num");
         }
-        if (n.getParam("robot/CANboard_type", CANboard_type))
-        {
-            // ROS_INFO("Got params CANboard_type: %s",CANboard_type.c_str());
-        }
-        else
-        {
-            ROS_ERROR("Faile to get params CANboard_type");
-        }
-        if (n.getParam("robot/CANboard_type", CANboard_type))
-        {
-            // ROS_INFO("Got params CANboard_type: %s",CANboard_type.c_str());
-        }
-        else
-        {
-            ROS_ERROR("Faile to get params CANboard_type");
-        }
+        
         if (n.getParam("robot/Serial_Type", Serial_Type))
         {
             // ROS_INFO("Got params Serial_Type: %s",Serial_Type.c_str());
@@ -72,12 +58,47 @@ namespace livelybot_serial
             ROS_ERROR("Faile to get params control_type");
         }
 
+
+        if (n.getParam("robot/imu_limt_flag", imu_limt_flag))
+        {
+            if (imu_limt_flag != false)
+            {
+                ROS_INFO("IMU needs to be enabled");
+                imu_sub = n.subscribe("/imu/data", 100, &robot::imuCallback, this);
+            }
+        }
+        else
+        {
+            ROS_ERROR("Faile to get params imu_limt_flag");
+            exit(-1);
+        }
+
+        if (!n.getParam("robot/imu_dir", imu_dir))
+        {
+            ROS_ERROR("Faile to get params imu_dir");
+            exit(-1);
+        }
+
+        if (n.getParam("robot/imu_limt_num", imu_limt_num))
+        {
+            if (imu_limt_num > 1.57f)
+            {
+                ROS_ERROR("The value of imu_limt_num must not exceed 1.57");
+                exit(-1);
+            }
+        }
+        else
+        {
+            ROS_ERROR("Faile to get params imu_limt_num");
+            exit(-1);
+        }
+
         ROS_INFO("\033[1;32mGot params SDK_version: v%s\033[0m", SDK_version2.c_str());
         ROS_INFO("\033[1;32mThe robot name is %s\033[0m", robot_name.c_str());
         ROS_INFO("\033[1;32mThe robot has %d CANboards\033[0m", CANboard_num);
-        ROS_INFO("\033[1;32mThe CANboard type is %s\033[0m", CANboard_type.c_str());
         ROS_INFO("\033[1;32mThe Serial type is %s\033[0m", Serial_Type.c_str());
         init_ser();
+        error_check_thread_ = std::thread(&robot::check_error, this);
 
         for (size_t i = 1; i <= CANboard_num; i++)
         {
@@ -94,7 +115,27 @@ namespace livelybot_serial
             cp->puch_motor(&Motors);
         }
         set_port_motor_num(); // 设置通道上挂载的电机数，并获取主控板固件版本号
-        chevk_motor_connection();  // 检测电机连接是否正常
+        if (slave_v >= 4.1f)
+        {
+            canboard_fdcan_reset();
+        }
+
+        if (slave_v < 4.0f)  // 检测电机连接是否正常
+        {
+            fun_v = fun_v1;
+            chevk_motor_connection_position();   
+        }
+        else
+        {
+            fun_v = fun_v2;
+            chevk_motor_connection_version();
+        }
+
+        
+        if (control_type == 12 && fun_v < fun_v5)
+        {
+            ROS_ERROR("The motor version is too old.");
+        }
         // set_timeout(5000);  // 设置所有电机的超时时间，单位ms，这里默认给 5s
         // set_timeout(0, 5000);  // 设置一条 can 通道所有电机的超时时间
 
@@ -110,26 +151,12 @@ namespace livelybot_serial
         // {
         //     std::cout<<m.get_motor_belong_canboard()<<" "<<m.get_motor_belong_canport()<<" "<<m.get_motor_id()<<std::endl;
         // }
-
-#ifdef DYNAMIC_CONFIG_ROBOT
-        config_slope_posistion = std::vector<double>(20, 1);
-        config_offset_posistion = std::vector<double>(20, 0);
-        config_slope_torque = std::vector<double>(20, 1);
-        config_offset_torque = std::vector<double>(20, 0);
-        config_slope_velocity = std::vector<double>(20, 1);
-        config_offset_velocity = std::vector<double>(20, 0);
-        config_rkp = std::vector<double>(20, 3);
-        config_rkd = std::vector<double>(20, 0.01);
-        dynamic_reconfigure::Server<livelybot_serial::robot_dynamic_config_20Config>::CallbackType cb;
-        cb = boost::bind(&robot::configCallback, this, _1, _2);
-        dr_srv_.setCallback(cb);
-#endif
-
     }
     robot::~robot()
     {
         publish_joint_state=0;
         set_stop();
+        motor_send_2();
         motor_send_2();
         for (auto &thread : ser_recv_threads)
         {
@@ -141,8 +168,35 @@ namespace livelybot_serial
         {
             pub_thread_.join(); 
         }
+
+        if(error_check_thread_.joinable())
+        {
+            error_check_thread_.join(); 
+        }
+        
     }
 
+    void robot::imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
+    {
+        const double w = msg->orientation.w;
+        const double x = msg->orientation.x;
+        const double y = msg->orientation.y;
+        const double z = msg->orientation.z;
+
+        const double sinr_cosp = 2 * (w * x + y * z);
+        const double cosr_cosp = 1 - 2 * (x * x + y * y);
+        roll = std::atan2(sinr_cosp, cosr_cosp);
+
+        const double sinp = 2 * (w * y - z * x);
+        if (std::abs(sinp) >= 1)
+        {
+            pitch = std::copysign(M_PI / 2, sinp); 
+        }
+        else
+        {
+            pitch = std::asin(sinp);
+        }
+    }
 
     void robot::publishJointStates()
     {
@@ -205,8 +259,51 @@ namespace livelybot_serial
         }
     }
 
+
+    bool robot::imu_limt()
+    {
+        float roll_err = 0.0f;
+
+        if (imu_limt_flag != true)
+        {
+            return true;
+        }
+
+        if (imu_dir == true)
+        {
+            roll_err = fabs(roll - 0.0f);
+        }
+        else
+        {
+            if(roll < 0)
+            {
+                roll_err = roll + 3.14;
+            }
+            else
+            {
+                roll_err = 3.14 - roll;
+            }
+        }
+
+        if (roll_err > imu_limt_num || pitch > imu_limt_num)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+
     void robot::motor_send_2()
     {
+        if (imu_limt() == false)
+        {
+            for (motor *m : Motors)
+            {
+                m->pos_vel_tqe_kp_kd(m->get_current_motor_state()->position, 0, 0, 10, 1);
+            }
+        }
+
         if(!motor_position_limit_flag && !motor_torque_limit_flag)
         {
             for (canboard &cb : CANboards)
@@ -222,19 +319,27 @@ namespace livelybot_serial
     {
         int r = 0;
         struct sp_port *port;
-        
-        sp_get_port_by_name(name, &port);
-        sp_open(port, SP_MODE_READ);
-        if (sp_get_port_usb_vid_pid(port, vid, pid) != SP_OK) 
+        try
         {
-            r = 1;
-        } 
-        std::cout << "Port: " << name << ", PID: 0x" << std::hex << *pid << ", VID: 0x" << *vid << std::dec << std::endl;
+            /* code */
+            sp_get_port_by_name(name, &port);
+            sp_open(port, SP_MODE_READ);
+            if (sp_get_port_usb_vid_pid(port, vid, pid) != SP_OK) 
+            {
+                r = 1;
+            } 
+            std::cout << "Port: " << name << ", PID: 0x" << std::hex << *pid << ", VID: 0x" << *vid << std::dec << std::endl;
 
-        // 关闭端口
-        sp_close(port);
-        sp_free_port(port);
-
+            // 关闭端口
+            sp_close(port);
+            sp_free_port(port);
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+            sp_close(port);
+            sp_free_port(port);
+        }
         return r;
     }
 
@@ -244,33 +349,50 @@ namespace livelybot_serial
         int pid, vid;
         int r = 0;
         struct sp_port *port;
-        
-        sp_get_port_by_name(name, &port);
-        sp_open(port, SP_MODE_READ);
-        if (sp_get_port_usb_vid_pid(port, &vid, &pid) != SP_OK) 
+        try
         {
-            r = -1;
-        } 
-        else 
-        {
-            switch (vid)
+            /* code */
+            sp_get_port_by_name(name, &port);
+            sp_open(port, SP_MODE_READ);
+            if (sp_get_port_usb_vid_pid(port, &vid, &pid) != SP_OK) 
             {
-            case (0xCAF1):
-                r = 1;
-                break;
-            case (0xCAF2):
-                r = 2;
-                break;
-            default:
-                r = -2;
-                break;
+                r = -1;
+            } 
+            else 
+            {
+                if (pid == 0xFFFF)
+                {
+                    switch (vid)
+                    {
+                    case (0xCAF1):
+                        r = 4;
+                        break;
+                    case (0xCAE1):
+                        r = 7;
+                        break;
+                    default:
+                        r = -3;
+                        break;
+                    }
+                }
+                else
+                {
+                    r = -1;
+                }
             }
-        }
-        // std::cout << "Port: " << name << ", PID: 0x" << std::hex << pid << ", VID: 0x" << vid << std::dec << std::endl;
+            // std::cout << "Port: " << name << ", PID: 0x" << std::hex << pid << ", VID: 0x" << vid << std::dec << std::endl;
 
-        // 关闭端口
-        sp_close(port);
-        sp_free_port(port);
+            // 关闭端口
+            sp_close(port);
+            sp_free_port(port);
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+            r = -3;
+            sp_close(port);
+            sp_free_port(port);
+        }
 
         return r;
     }
@@ -311,68 +433,219 @@ namespace livelybot_serial
 
     void robot::init_ser()
     {
+        ser.clear();
+        ser_recv_threads.clear();
+        str.clear();   
         std::vector<std::string> ports = list_serial_ports(Serial_Type);
+        std::cout << "Serial Port List: " << std::endl;
+        int8_t board_port_num = 99;
         for (const std::string& port : ports) 
-        {
-            if (serial_pid_vid(port.c_str()) > 0)
+        {   
+            const int8_t r = serial_pid_vid(port.c_str());
+            if (r > 0)
             {
                 ROS_INFO("Serial Port%ld = %s", str.size(), port.c_str());
                 str.push_back(port);
+                board_port_num = r > board_port_num ? board_port_num : r;
             }
         }
 
-        if ((str.size() < 4 * CANboard_num))
+        if (board_port_num == 0xff)
         {
-            ROS_ERROR("Cannot find the motor serial port, please check if the USB connection is normal.");
+            ROS_ERROR("Communication board not detected!!!");
             exit(-1);
         }
 
-        if (CANboard_num > 1)
+        const uint8_t port_max_num = board_port_num * CANboard_num;
+        if (str.size() < port_max_num)
         {
-            std::vector<std::string> str1, str2;
-            for (size_t i = 0; i < 8; i++)
-            {   
-                int vid = serial_pid_vid(str[i].c_str());
-                if (vid == 1)
-                {
-                    str1.push_back(str[i]);
-                }
-                else if (vid == 2)
-                {
-                    str2.push_back(str[i]);
-                }
-                else
-                {
-                    ROS_ERROR("Failed to open serial port.");
-                    exit(-1);
-                }
-            }
+            ROS_INFO("port max num = %d", port_max_num);
+            ROS_ERROR("The number of detected communication board serial ports is less than expected");
+            exit(-1);
+        }
 
-            for (size_t i = 0; i < 4; i++)
-            {
-                std::swap(str[i], str1[i]);
-                std::swap(str[i + 4], str2[i]);
-            }
-        }
-        std::cout << std::endl;
-        for (int i = 0; i < 4*CANboard_num; i++)
+        for (int cb_id = 1; cb_id <= CANboard_num; cb_id++)
         {
-            std::cout << str[i] << " " << serial_pid_vid(str[i].c_str()) << std::endl;
-        }
-        
-        for (size_t i = 0; i < str.size(); i++)
-        {
-            lively_serial *s = new lively_serial(&str[i], Seial_baudrate);
-            ser.push_back(s);
-            if (SDK_version == 2)
+            int cp_num = 0;
+            if (n.getParam("robot/CANboard/No_" + std::to_string(cb_id) + "_CANboard/CANport_num", cp_num))
             {
-                ser_recv_threads.push_back(std::thread(&lively_serial::recv_1for6_42, s));
+                ROS_INFO("board %d has %d port", cb_id, cp_num);
             }
             else
             {
-                ROS_ERROR("SDK_version != 2");
+                ROS_ERROR("Faile to get params CANboard_num");
+                exit(-1);
+            }
+
+            std::vector<int> serial_id_old;
+            for (int cp_id = 1; cp_id <= cp_num; cp_id++)
+            {
+                int serial_id = 0;
+                if (n.getParam("robot/CANboard/No_" + std::to_string(cb_id) + "_CANboard/CANport/CANport_" + std::to_string(cp_id) + "/serial_id", serial_id))
+                {
+                    if (serial_id > str.size() || serial_id < 1)
+                    {
+                        ROS_ERROR("serial_id error!!!");
+                        exit(-1);
+                    }
+                    if (!serial_id_old.empty() && std::find(serial_id_old.begin(), serial_id_old.end(), serial_id) != serial_id_old.end())
+                    {
+                        ROS_ERROR("The serial_id is duplicated!!!");
+                        exit(-1);
+                    }
+                    serial_id_old.push_back(serial_id);
+
+                    lively_serial *s = new lively_serial(&str[serial_id - 1], Seial_baudrate);
+                    ser.push_back(s);
+                    ser_recv_threads.push_back(std::thread(&lively_serial::recv_1for6_42, s));
+                }
+                else
+                {
+                    ROS_ERROR("serial_id error!!!");
+                }
             }
         }
+    }
+
+    typedef enum{
+        error_check = 0,    // 正常
+        error_clear,        // 报错，清理     
+        error_wait_dev,     // 报错，等待设备
+        error_reconnect,    // 报错，重连
+    }error_run_state_e;
+
+    void robot::check_error(void)
+    {
+        std::mutex robot_mutex;
+        while(true)
+        {
+            static error_run_state_e last_error_run_state = error_reconnect;
+            static error_run_state_e error_run_state = error_check;// 0：正常，1：报错,清理，2：重连
+            switch(error_run_state)
+            {
+                case 0:
+                {
+                    bool serial_error = false;
+                    for (lively_serial *s : ser)
+                    {
+                        if (s->is_serial_error())
+                        {
+                            serial_error = true;
+                            break;
+                        }
+                    }
+                    if(serial_error)
+                    {
+                        serial_error = false;
+                        error_run_state = error_clear;
+                        std::cerr << "Serial error" << std::endl;
+                    }
+                }
+                break;
+                case error_clear:
+                {
+                    std::lock_guard<std::mutex> lock(robot_mutex);
+                    for (lively_serial *s : ser)
+                    {
+                        s->set_run_flag(false);
+                        // s->close();
+                    }
+                    for (auto &_thread : ser_recv_threads)
+                    {
+                        if (_thread.joinable())
+                        {
+                            _thread.join();
+                        }
+                    }
+
+                    CANboards.clear();
+                    CANPorts.clear();
+                    Motors.clear();
+        
+                    for (lively_serial *s : ser)
+                    {
+                        delete s;
+                    }
+
+                    ser.clear();
+                    error_run_state = error_wait_dev;
+                    std::cerr << "clear obj and thread" << std::endl;
+                }
+                break;
+                case error_wait_dev:
+                {
+                    int exist_num = this->check_serial_dev_exist(8);
+                    std::cerr << "find "  << exist_num << " device(s)" << std::endl;
+                    if (exist_num < 4)
+                    {
+                        std::cerr << "Cannot find 4 motor serial port, please check if the USB connection is normal." << std::endl;
+                    }
+                    else
+                    {
+                        std::cout << "file all diveces" << std::endl;
+                        error_run_state = error_reconnect;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+                    }
+                }
+                break;
+                case error_reconnect:
+                {
+                    std::cerr << "reconnect start " << std::endl;
+                    this->init_ser();
+                    for (size_t i = 1; i <= CANboard_num; i++)
+                    {
+                        CANboards.push_back(canboard(i, &ser));
+                    }
+
+                    for (canboard &cb : CANboards)
+                    {
+                        cb.push_CANport(&CANPorts);
+                    }
+                    for (canport *cp : CANPorts)
+                    {
+                        // std::thread(&canport::send, &cp);
+                        cp->puch_motor(&Motors);
+                    }
+                    set_port_motor_num(); // 设置通道上挂载的电机数，并获取主控板固件版本号
+                    chevk_motor_connection_version();  // 检测电机连接是否正常
+                    error_run_state = error_check;
+                    std::cerr << "reconnect end" << std::endl;
+                }
+                break;
+                default:
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            // only state chaged, print state.
+            if(error_run_state != last_error_run_state)
+            {
+                last_error_run_state = error_run_state;
+                std::cout << "error_run_state = " << error_run_state << std::endl;
+            }
+        }
+    }
+
+    int robot::check_serial_dev_exist(int file_num)
+    {
+        int exist_num = 0;
+        std::cout << "check serial dev exist" << std::endl;
+        std::vector<std::string> dev_vec;
+        for (size_t i = 0; i < file_num; i++)
+        {
+            std::string _dev = std::string("/dev/ttyACM") + std::to_string(i);
+            std::cout << "check: " << _dev << std::endl;
+            dev_vec.push_back(_dev);
+        }
+        for (auto &dev : dev_vec)
+        {
+            if(access(dev.c_str(),F_OK) == 0)
+            {
+                exist_num++;
+                std::cout << "exist: " << dev << std::endl;
+            }
+        }
+        std::cout << "exist_num = " << exist_num << std::endl;
+        return exist_num;
     }
 
 
@@ -383,39 +656,200 @@ namespace livelybot_serial
     {
         for (canboard &cb : CANboards)
         {
-            cb.set_port_motor_num();
+            slave_v = cb.set_port_motor_num();
         }
     }
     
     
     void robot::send_get_motor_state_cmd()
     {
-    #if 0 
-        for (canboard &cb : CANboards)
+        if (fun_v >= fun_v4)
         {
-            cb.send_get_motor_state_cmd();
-        }
-    #else
-        if (control_type != 0)
-        {
-            for (motor *m : Motors)
+            for (canboard &cb : CANboards)
             {
-                m->fresh_cmd_int16(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+                cb.send_get_motor_state_cmd2();
             }
         }
-        else
+        else if (fun_v >= fun_v2 || control_type == 0)
         {
             for (canboard &cb : CANboards)
             {
                 cb.send_get_motor_state_cmd();
             }
         }
-        motor_send_2();
-    #endif
+        else
+        {
+            for (motor *m : Motors)
+            {
+                m->velocity(0.0f);
+            }
+            motor_send_2();
+        }
     }
 
 
-    void robot::chevk_motor_connection()
+    void robot::send_get_motor_version_cmd()
+    {
+        if (slave_v < 4.0f)
+        {
+            ROS_ERROR("The current communication board does not support this function!!!");
+            exit(-1);
+        }
+
+        for (canboard &cb : CANboards)
+        {
+            cb.send_get_motor_version_cmd();
+        }
+    }
+
+
+    void robot::motor_version_detection()
+    {
+        uint16_t v_old = 0xFFFF;
+        uint16_t i = 0;
+
+        ROS_INFO("---------------motor version---------------------");
+        for (motor *m : Motors)
+        {
+            const auto v = m->get_version();
+            ROS_INFO("motors[%02d]: id:%02d v%d.%d.%d", i++, v.id, v.major, v.minor, v.patch);
+            const uint16_t v_new = v.major << 12 | (v.minor << 4) | v.patch;
+            if (v_old > v_new && v_new != 0)
+            {
+                v_old = v_new;
+            }
+        }
+        ROS_INFO("-------------------------------------------------");
+
+        if (v_old >= COMBINE_VERSION(4, 4, 6))
+        {
+            fun_v = fun_v5;
+        }
+        else if (v_old >= COMBINE_VERSION(4, 2, 3))
+        {
+            fun_v = fun_v4;
+        }
+        else if (v_old >= COMBINE_VERSION(4, 2, 2))
+        {
+            fun_v = fun_v3;
+        }
+        else if (v_old >= COMBINE_VERSION(4, 2, 0))
+        {
+            fun_v = fun_v2;
+        }
+        else
+        {
+            fun_v = fun_v1;
+        }
+
+        for (canboard &cb : CANboards)
+        {
+            cb.set_fun_v(fun_v);
+        }
+
+        ROS_INFO("fun_v = %d", fun_v);
+
+
+        uint8_t v = 0;
+        uint8_t v2 = 0;
+
+        for (motor *m : Motors)
+        {
+            v = m->get_version().major;
+
+            if (v == 5 && v2 != 0 && v != v2)
+            {
+                ROS_ERROR("The motor version is notInconsistent motor version!!!");
+                exit(-1);
+            }
+
+            v2 = v;
+
+            if (v == 5)
+            {
+                m->set_type(mGeneral);
+            }
+        }
+    }
+
+
+    // 将所有数据置为 0xFF
+    void robot::set_data_reset()
+    {
+        if (fun_v < fun_v3)
+        {
+            ROS_ERROR("The current feature version is not supported!!!");
+            exit(-3);
+        }
+
+        for (canboard &cb : CANboards)
+        {
+            cb.set_data_reset();
+        }
+    }
+
+
+    void robot::chevk_motor_connection_version()
+    {
+        int t = 0;
+        int num = 0;
+        std::vector<int> board;
+        std::vector<int> port;
+        std::vector<int> id;
+
+        ROS_INFO("Detecting motor connection");
+        while (t++ < 20)
+        {
+            send_get_motor_version_cmd();
+            ros::Duration(0.1).sleep();
+
+            num = 0;
+            std::vector<int>().swap(board);
+            std::vector<int>().swap(port);
+            std::vector<int>().swap(id);
+            for (motor *m : Motors)
+            {
+                cdc_rx_motor_version_s &v = m->get_version();
+                if (v.major != 0)
+                {
+                    ++num;
+                }
+                else
+                {
+                    board.push_back(m->get_motor_belong_canboard());
+                    port.push_back(m->get_motor_belong_canport());
+                    id.push_back(m->get_motor_id());
+                }
+            }
+
+            if (num == Motors.size())
+            {
+                break;
+            }
+
+            if (t % 100 == 0)
+            {
+                ROS_INFO(".");
+            }
+        }
+
+        if (num == Motors.size())
+        {
+            ROS_INFO("\033[1;32mAll motor connections are normal\033[0m");
+        }
+        else
+        {
+            for (int i = 0; i < Motors.size() - num; i++)
+            {
+                ROS_ERROR("CANboard(%d) CANport(%d) id(%d) Motor connection disconnected!!!", board[i], port[i], id[i]);
+            }
+            ros::Duration(3).sleep();
+        }
+        motor_version_detection();
+    }
+
+
+    void robot::chevk_motor_connection_position()
     {
         int t = 0;
         int num = 0;
@@ -471,17 +905,8 @@ namespace livelybot_serial
                 ROS_ERROR("CANboard(%d) CANport(%d) id(%d) Motor connection disconnected!!!", board[i], port[i], id[i]);
             }
             // exit(-1);
-            ros::Duration(1).sleep();
+            ros::Duration(3).sleep();
         }
-
-        for (int i = 0; i < 3; i++)
-        {
-            set_reset();
-            motor_send_2();
-            ros::Duration(0.001).sleep();
-        }
-
-        ros::Duration(0.1).sleep();
     }
 
 
@@ -584,221 +1009,21 @@ namespace livelybot_serial
         }
     }
 
-#ifdef DYNAMIC_CONFIG_ROBOT
-    void robot::configCallback(robot_dynamic_config_20Config &config, uint32_t level)
+    void robot::canboard_bootloader()
     {
-        ROS_INFO("reconfigure parameter");
-        // 更新vector参数
-        config_slope_posistion[0] = (config.position_slope_0);
-        config_slope_posistion[1] = (config.position_slope_1);
-        config_slope_posistion[2] = (config.position_slope_2);
-        config_slope_posistion[3] = (config.position_slope_3);
-        config_slope_posistion[4] = (config.position_slope_4);
-        config_slope_posistion[5] = (config.position_slope_5);
-        config_slope_posistion[6] = (config.position_slope_6);
-        config_slope_posistion[7] = (config.position_slope_7);
-        config_slope_posistion[8] = (config.position_slope_8);
-        config_slope_posistion[9] = (config.position_slope_9);
-        config_slope_posistion[10] = (config.position_slope_10);
-        config_slope_posistion[11] = (config.position_slope_11);
-        config_slope_posistion[12] = (config.position_slope_12);
-        config_slope_posistion[13] = (config.position_slope_13);
-        config_slope_posistion[14] = (config.position_slope_14);
-        config_slope_posistion[15] = (config.position_slope_15);
-        config_slope_posistion[16] = (config.position_slope_16);
-        config_slope_posistion[17] = (config.position_slope_17);
-        config_slope_posistion[18] = (config.position_slope_18);
-        config_slope_posistion[19] = (config.position_slope_19);
-
-        config_offset_posistion[0] = (config.position_offset_0);
-        config_offset_posistion[1] = (config.position_offset_1);
-        config_offset_posistion[2] = (config.position_offset_2);
-        config_offset_posistion[3] = (config.position_offset_3);
-        config_offset_posistion[4] = (config.position_offset_4);
-        config_offset_posistion[5] = (config.position_offset_5);
-        config_offset_posistion[6] = (config.position_offset_6);
-        config_offset_posistion[7] = (config.position_offset_7);
-        config_offset_posistion[8] = (config.position_offset_8);
-        config_offset_posistion[9] = (config.position_offset_9);
-        config_offset_posistion[10] = (config.position_offset_10);
-        config_offset_posistion[11] = (config.position_offset_11);
-        config_offset_posistion[12] = (config.position_offset_12);
-        config_offset_posistion[13] = (config.position_offset_13);
-        config_offset_posistion[14] = (config.position_offset_14);
-        config_offset_posistion[15] = (config.position_offset_15);
-        config_offset_posistion[16] = (config.position_offset_16);
-        config_offset_posistion[17] = (config.position_offset_17);
-        config_offset_posistion[18] = (config.position_offset_18);
-        config_offset_posistion[19] = (config.position_offset_19);
-
-        config_slope_velocity[0] = (config.velocity_slope_0);
-        config_slope_velocity[1] = (config.velocity_slope_1);
-        config_slope_velocity[2] = (config.velocity_slope_2);
-        config_slope_velocity[3] = (config.velocity_slope_3);
-        config_slope_velocity[4] = (config.velocity_slope_4);
-        config_slope_velocity[5] = (config.velocity_slope_5);
-        config_slope_velocity[6] = (config.velocity_slope_6);
-        config_slope_velocity[7] = (config.velocity_slope_7);
-        config_slope_velocity[8] = (config.velocity_slope_8);
-        config_slope_velocity[9] = (config.velocity_slope_9);
-        config_slope_velocity[10] = (config.velocity_slope_10);
-        config_slope_velocity[11] = (config.velocity_slope_11);
-        config_slope_velocity[12] = (config.velocity_slope_12);
-        config_slope_velocity[13] = (config.velocity_slope_13);
-        config_slope_velocity[14] = (config.velocity_slope_14);
-        config_slope_velocity[15] = (config.velocity_slope_15);
-        config_slope_velocity[16] = (config.velocity_slope_16);
-        config_slope_velocity[17] = (config.velocity_slope_17);
-        config_slope_velocity[18] = (config.velocity_slope_18);
-        config_slope_velocity[19] = (config.velocity_slope_19);
-
-        config_offset_velocity[0] = (config.velocity_offset_0);
-        config_offset_velocity[1] = (config.velocity_offset_1);
-        config_offset_velocity[2] = (config.velocity_offset_2);
-        config_offset_velocity[3] = (config.velocity_offset_3);
-        config_offset_velocity[4] = (config.velocity_offset_4);
-        config_offset_velocity[5] = (config.velocity_offset_5);
-        config_offset_velocity[6] = (config.velocity_offset_6);
-        config_offset_velocity[7] = (config.velocity_offset_7);
-        config_offset_velocity[8] = (config.velocity_offset_8);
-        config_offset_velocity[9] = (config.velocity_offset_9);
-        config_offset_velocity[10] = (config.velocity_offset_10);
-        config_offset_velocity[11] = (config.velocity_offset_11);
-        config_offset_velocity[12] = (config.velocity_offset_12);
-        config_offset_velocity[13] = (config.velocity_offset_13);
-        config_offset_velocity[14] = (config.velocity_offset_14);
-        config_offset_velocity[15] = (config.velocity_offset_15);
-        config_offset_velocity[16] = (config.velocity_offset_16);
-        config_offset_velocity[17] = (config.velocity_offset_17);
-        config_offset_velocity[18] = (config.velocity_offset_18);
-        config_offset_velocity[19] = (config.velocity_offset_19);
-
-        config_slope_torque[0] = (config.torque_slope_0);
-        config_slope_torque[1] = (config.torque_slope_1);
-        config_slope_torque[2] = (config.torque_slope_2);
-        config_slope_torque[3] = (config.torque_slope_3);
-        config_slope_torque[4] = (config.torque_slope_4);
-        config_slope_torque[5] = (config.torque_slope_5);
-        config_slope_torque[6] = (config.torque_slope_6);
-        config_slope_torque[7] = (config.torque_slope_7);
-        config_slope_torque[8] = (config.torque_slope_8);
-        config_slope_torque[9] = (config.torque_slope_9);
-        config_slope_torque[10] = (config.torque_slope_10);
-        config_slope_torque[11] = (config.torque_slope_11);
-        config_slope_torque[12] = (config.torque_slope_12);
-        config_slope_torque[13] = (config.torque_slope_13);
-        config_slope_torque[14] = (config.torque_slope_14);
-        config_slope_torque[15] = (config.torque_slope_15);
-        config_slope_torque[16] = (config.torque_slope_16);
-        config_slope_torque[17] = (config.torque_slope_17);
-        config_slope_torque[18] = (config.torque_slope_18);
-        config_slope_torque[19] = (config.torque_slope_19);
-
-        config_offset_torque[0] = (config.torque_offset_0);
-        config_offset_torque[1] = (config.torque_offset_1);
-        config_offset_torque[2] = (config.torque_offset_2);
-        config_offset_torque[3] = (config.torque_offset_3);
-        config_offset_torque[4] = (config.torque_offset_4);
-        config_offset_torque[5] = (config.torque_offset_5);
-        config_offset_torque[6] = (config.torque_offset_6);
-        config_offset_torque[7] = (config.torque_offset_7);
-        config_offset_torque[8] = (config.torque_offset_8);
-        config_offset_torque[9] = (config.torque_offset_9);
-        config_offset_torque[10] = (config.torque_offset_10);
-        config_offset_torque[11] = (config.torque_offset_11);
-        config_offset_torque[12] = (config.torque_offset_12);
-        config_offset_torque[13] = (config.torque_offset_13);
-        config_offset_torque[14] = (config.torque_offset_14);
-        config_offset_torque[15] = (config.torque_offset_15);
-        config_offset_torque[16] = (config.torque_offset_16);
-        config_offset_torque[17] = (config.torque_offset_17);
-        config_offset_torque[18] = (config.torque_offset_18);
-        config_offset_torque[19] = (config.torque_offset_19);
-
-        config_rkp[0] = config.rkp_0;
-        config_rkp[1] = config.rkp_1;
-        config_rkp[2] = config.rkp_2;
-        config_rkp[3] = config.rkp_3;
-        config_rkp[4] = config.rkp_4;
-        config_rkp[5] = config.rkp_5;
-        config_rkp[6] = config.rkp_6;
-        config_rkp[7] = config.rkp_7;
-        config_rkp[8] = config.rkp_8;
-        config_rkp[9] = config.rkp_9;
-        config_rkp[10] = config.rkp_10;
-        config_rkp[11] = config.rkp_11;
-        config_rkp[12] = config.rkp_12;
-        config_rkp[13] = config.rkp_13;
-        config_rkp[14] = config.rkp_14;
-        config_rkp[15] = config.rkp_15;
-        config_rkp[16] = config.rkp_16;
-        config_rkp[17] = config.rkp_17;
-        config_rkp[18] = config.rkp_18;
-        config_rkp[19] = config.rkp_19;
-
-        config_rkd[0] = config.rkd_0;
-        config_rkd[1] = config.rkd_1;
-        config_rkd[2] = config.rkd_2;
-        config_rkd[3] = config.rkd_3;
-        config_rkd[4] = config.rkd_4;
-        config_rkd[5] = config.rkd_5;
-        config_rkd[6] = config.rkd_6;
-        config_rkd[7] = config.rkd_7;
-        config_rkd[8] = config.rkd_8;
-        config_rkd[9] = config.rkd_9;
-        config_rkd[10] = config.rkd_10;
-        config_rkd[11] = config.rkd_11;
-        config_rkd[12] = config.rkd_12;
-        config_rkd[13] = config.rkd_13;
-        config_rkd[14] = config.rkd_14;
-        config_rkd[15] = config.rkd_15;
-        config_rkd[16] = config.rkd_16;
-        config_rkd[17] = config.rkd_17;
-        config_rkd[18] = config.rkd_18;
-        config_rkd[19] = config.rkd_19;
-    }
-
-
-    void robot::fresh_cmd_dynamic_config(float pos, float vel, float torque, size_t motor_idx)
-    {
-        if (motor_idx >= Motors.size())
+        for (canboard &cb : CANboards)
         {
-            ROS_ERROR("motor_idx greater than motors vector size!!!");
-            return;
+            cb.canboard_bootloader();
         }
-        Motors[motor_idx]->fresh_cmd_int16((pos * config_slope_posistion[motor_idx]) + config_offset_posistion[motor_idx],
-                                            (vel * config_slope_velocity[motor_idx]) + config_offset_velocity[motor_idx],
-                                            (torque * config_slope_torque[motor_idx]) + config_offset_torque[motor_idx],
-                                            config_rkp[motor_idx], 0, config_rkd[motor_idx], 0, 0, 0);
     }
 
-
-    void robot::fresh_cmd_dynamic_config(float pos, float vel, float torque, float kp, float kd, size_t motor_idx)
+    void robot::canboard_fdcan_reset()
     {
-        if (motor_idx >= Motors.size())
+        ROS_INFO("canboard fdcan reset");
+        for (canboard &cb : CANboards)
         {
-            ROS_ERROR("motor_idx greater than motors vector size!!!");
-            return;
+            cb.canboard_fdcan_reset();
         }
-        Motors[motor_idx]->fresh_cmd_int16((pos * config_slope_posistion[motor_idx]) + config_offset_posistion[motor_idx],
-                                            (vel * config_slope_velocity[motor_idx]) + config_offset_velocity[motor_idx],
-                                            (torque * config_slope_torque[motor_idx]) + config_offset_torque[motor_idx],
-                                            kp, 0, kd, 0, 0, 0);
+        ros::Duration(0.01).sleep();
     }
-
-
-    void robot::get_motor_state_dynamic_config(float &pos, float &vel, float &torque, size_t motor_idx)
-    {
-        if (motor_idx >= Motors.size())
-        {
-            ROS_ERROR("motor_idx greater than motors vector size!!!");
-            return;
-        }
-        motor_back_t motor_back_data;
-        motor_back_data = *Motors[motor_idx]->get_current_motor_state();
-        pos = (motor_back_data.position - config_offset_posistion[motor_idx]) / config_slope_posistion[motor_idx];
-        vel = (motor_back_data.velocity - config_offset_velocity[motor_idx]) / config_slope_velocity[motor_idx];
-        torque = (motor_back_data.torque - config_offset_torque[motor_idx]) / config_slope_torque[motor_idx];
-    }
-#endif
 }

@@ -3,6 +3,7 @@
 
 livelybot_can::CAN_Driver can_handler(CAN_DEVICE_NAME);  
 ros::Publisher battery_volt_pub;
+ros::Publisher battery_curr_pub;
 ros::Publisher power_detect_pub;
 ros::Publisher power_switch_pub;
 ros::Subscriber power_switch_sub;     
@@ -20,6 +21,7 @@ void Power_Board::run(ros::NodeHandle &n)
 {
     ros::Rate r(10);
     battery_volt_pub = n.advertise<std_msgs::Float32>("battery_voltage", 1);
+    battery_curr_pub = n.advertise<std_msgs::Float32>("battery_current", 1);
     power_switch_pub = n.advertise<livelybot_power::Power_switch>("power_switch_state", 1);
     power_detect_pub = n.advertise<livelybot_power::Power_detect>("power_detect_state", 1);
     power_switch_sub = n.subscribe("power_switch_control", 1, power_switch_callback);
@@ -45,8 +47,6 @@ void can_recv_parse(int can_id, unsigned char*data, unsigned char dlc)
     data_type = (can_id>>1) & 0x3F;
     append_flag = can_id >> 10;
 
-    // printf("接受到CAN数据 ADDR-TYPE-FLAG:%d, %d, %d\n", dev_addr, data_type, append_flag);
-
     if(!append_flag)
     {
         switch (dev_addr)
@@ -60,6 +60,10 @@ void can_recv_parse(int can_id, unsigned char*data, unsigned char dlc)
                         std_msgs::Float32 msg;
                         msg.data = (*(int16_t*)&data[0])/100.0f;
                         battery_volt_pub.publish(msg);
+                        
+                        std_msgs::Float32 curr_msg;
+                        curr_msg.data = (*(int16_t*)&data[2])/100.0f;
+                        battery_curr_pub.publish(curr_msg);
                     }
                     break;
                     default:
@@ -85,7 +89,7 @@ void can_recv_parse(int can_id, unsigned char*data, unsigned char dlc)
                         // printf("switch status:%d, %d\r\n", data[0], data[1]);
                         livelybot_power::Power_switch power_switch_msg;
                         power_switch_msg.control_switch = data[0];
-                        power_switch_msg.control_switch = data[1];
+                        power_switch_msg.power_switch = data[1];
                         power_switch_pub.publish(power_switch_msg);
                         break;
                     }

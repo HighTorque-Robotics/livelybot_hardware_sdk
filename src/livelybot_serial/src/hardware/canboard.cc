@@ -1,4 +1,4 @@
-#include "hardware/canboard.h"
+#include "canboard.h"
 
 
 canboard::canboard(int _CANboard_ID, std::vector<lively_serial *> *ser)
@@ -15,6 +15,12 @@ canboard::canboard(int _CANboard_ID, std::vector<lively_serial *> *ser)
     {
         CANport.push_back(new canport(j, _CANboard_ID, (*ser)[(_CANboard_ID - 1) * CANport_num + j - 1]));
     }
+}
+
+
+std::vector<canport*>& canboard::get_CANport()
+{
+    return CANport;
 }
 
 
@@ -60,12 +66,15 @@ void canboard::set_reset()
 }
 
 
-void canboard::set_port_motor_num()
+float canboard::set_port_motor_num()
 {
+    float v = 0;
     for (canport *c : CANport)
     {
-        c->set_motor_num();
+        v = c->set_motor_num();
     }
+
+    return v;
 }
 
 
@@ -74,6 +83,42 @@ void canboard::send_get_motor_state_cmd()
     for (canport *c : CANport)
     {
         c->send_get_motor_state_cmd();
+    }
+}
+
+
+void canboard::send_get_motor_state_cmd2()
+{
+    for (canport *c : CANport)
+    {
+        c->send_get_motor_state_cmd2();
+    }
+}
+
+
+void canboard::send_get_motor_version_cmd()
+{
+    for (canport *c : CANport)
+    {
+        c->send_get_motor_version_cmd();
+    }
+}
+
+
+void canboard::set_fun_v(fun_version v)
+{
+    for (canport *c : CANport)
+    {
+        c->set_fun_v(v);
+    }
+}
+
+
+void canboard::set_data_reset()
+{
+    for (canport *c : CANport)
+    {
+        c->set_data_reset();
     }
 }
 
@@ -125,3 +170,14 @@ void canboard::set_time_out(uint8_t portx, int16_t t_ms)
     CANport[portx]->set_time_out(t_ms);
 }
 
+
+void canboard::canboard_bootloader()
+{
+    CANport[0]->canboard_bootloader();
+}
+
+
+void canboard::canboard_fdcan_reset()
+{
+    CANport[0]->canboard_fdcan_reset();
+}

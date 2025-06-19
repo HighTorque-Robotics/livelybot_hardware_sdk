@@ -1,4 +1,4 @@
-#include "hardware/motor.h"
+#include "motor.h"
 
 
 motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message_s *_p_cdc_tx_message, int _id_max)
@@ -22,9 +22,20 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     {
         ROS_ERROR("Faile to get params id");
     }
-    if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/type", type))
+
+    std::string type_str;
+    if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/type", type_str))
     {
-        // ROS_INFO("Got params type: %d",type);
+        try 
+        {
+            ROS_INFO("Got params type: %s", type_str.c_str());
+            type = motor_type2.at(type_str);
+        } 
+        catch (const std::out_of_range& e) 
+        {
+            ROS_ERROR("Motor model error: %s", type_str.c_str());
+            exit(-2); 
+        }
     }
     else
     {
@@ -41,7 +52,7 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     // position limit
     if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/pos_limit_enable", pos_limit_enable))
     {
-        ROS_INFO("Got params pos_limit_enable: %s",pos_limit_enable?"true":"false");
+        // ROS_INFO("Got params pos_limit_enable: %s",pos_limit_enable?"true":"false");
     }
     else
     {
@@ -49,7 +60,7 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     }
     if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/pos_upper", pos_upper))
     {
-        ROS_INFO("Got params pos_upper: %f",pos_upper);
+        // ROS_INFO("Got params pos_upper: %f",pos_upper);
     }
     else
     {
@@ -57,7 +68,7 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     }
     if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/pos_lower", pos_lower))
     {
-        ROS_INFO("Got params pos_lower: %f",pos_lower);
+        // ROS_INFO("Got params pos_lower: %f",pos_lower);
     }
     else
     {
@@ -66,7 +77,7 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     // torque limit
     if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/tor_limit_enable", tor_limit_enable))
     {
-        ROS_INFO("Got params tor_limit_enable: %s",tor_limit_enable?"true":"false");
+        // ROS_INFO("Got params tor_limit_enable: %s",tor_limit_enable?"true":"false");
     }
     else
     {
@@ -74,7 +85,7 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     }
     if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/tor_upper", tor_upper))
     {
-        ROS_INFO("Got params tor_upper: %f",tor_upper);
+        // ROS_INFO("Got params tor_upper: %f",tor_upper);
     }
     else
     {
@@ -82,7 +93,7 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     }
     if (n.getParam("robot/CANboard/No_" + std::to_string(_CANboard_num) + "_CANboard/CANport/CANport_" + std::to_string(_CANport_num) + "/motor/motor" + std::to_string(_motor_num) + "/tor_lower", tor_lower))
     {
-        ROS_INFO("Got params tor_lower: %f",tor_lower);
+        // ROS_INFO("Got params tor_lower: %f",tor_lower);
     }
     else
     {
@@ -99,6 +110,8 @@ motor::motor(int _motor_num, int _CANport_num, int _CANboard_num, cdc_tr_message
     set_motor_type(type);
     data.time = 0;
     data.ID = id;
+    data.mode = 0;
+    data.fault = 0;
     data.position = 999.0f;
     data.velocity = 0;
     data.torque = 0;
@@ -109,11 +122,11 @@ inline int16_t motor::pos_float2int(float in_data, uint8_t type)
 {
     switch (type)
     {
-    case (0):
+    case (pos_vel_convert_type::radian_2pi):
         return (int16_t)(in_data / my_2pi * 10000.0);
-    case (1):
+    case (pos_vel_convert_type::angle_360):
         return (int16_t)(in_data / 360.0 * 10000.0);
-    case (2):
+    case (pos_vel_convert_type::turns):
         return (int16_t)(in_data * 10000.0);
     default:
         return int16_t();
@@ -124,11 +137,11 @@ inline int16_t motor::vel_float2int(float in_data, uint8_t type)
 {
     switch (type)
     {
-    case (0):
+    case (pos_vel_convert_type::radian_2pi):
         return (int16_t)(in_data / my_2pi * 4000.0);
-    case (1):
+    case (pos_vel_convert_type::angle_360):
         return (int16_t)(in_data / 360.0 * 4000.0);
-    case (2):
+    case (pos_vel_convert_type::turns):
         return (int16_t)(in_data * 4000.0);
     default:
         return int16_t();
@@ -137,72 +150,87 @@ inline int16_t motor::vel_float2int(float in_data, uint8_t type)
 
 inline int16_t motor::tqe_float2int(float in_data, motor_type motor_type)
 {
+#define TQE_ADJUST(data, k, d)  ((int16_t)(((data) - (d)) / (k)))
+
     switch (motor_type)
     {
     case motor_type::null:
         ROS_ERROR("motor type not set,fresh command fault");
         return int16_t();
-    case motor_type::_5046:
-        return (int16_t)((in_data + 0.07) / 0.00528);
-    case motor_type::_4538:
-        return (int16_t)((in_data + 0.05) / 0.00445);
-    case motor_type::_5047_36:
-        // return (int16_t)((in_data + 0.05253) / 0.00462);  // 老款
-        return (int16_t)((in_data + 0.03313) / 0.004938);
-    case motor_type::_5047_9:
-        return (int16_t)((in_data + 0.034809) / 0.00533);
-    case motor_type::_4438_32:
-        return (int16_t)((in_data + 0.083) / 0.005584f);
-    case motor_type::_5047_36_2: 
-        return (int16_t)((in_data + 0.35) / 0.00803f);
-    case motor_type::_6056_36_2:
-        return (int16_t)((in_data + 0.1) / 0.00677f);
-    case motor_type::_5043_20:
-        return (int16_t)(((in_data) + 0.115) / 0.00966f);
+    case motor_type::m3536_32:
+        return TQE_ADJUST(in_data, 0.004581, -0.105);
+    case motor_type::m5046_20:
+        return TQE_ADJUST(in_data, 0.005280, -0.07);
+    case motor_type::m4538_19:
+        return TQE_ADJUST(in_data, 0.004450, -0.05);
+    case motor_type::m5047_36:
+        return TQE_ADJUST(in_data, 0.004938, -0.03313);
+    case motor_type::m5047_09:
+        return TQE_ADJUST(in_data, 0.005330, -0.034809);
+    case motor_type::m4438_30:
+        return TQE_ADJUST(in_data, 0.005256, -0.05);
+    case motor_type::m4438_32:
+        return TQE_ADJUST(in_data, 0.005584, -0.083);
+    case (motor_type::m5047_36_2):
+        return TQE_ADJUST(in_data, 0.008030, -0.35);
+    case (motor_type::m6056_36):
+        return TQE_ADJUST(in_data, 0.006770, -0.1);
+    case (motor_type::m7256_35):
+        return TQE_ADJUST(in_data,  0.00677, -0.244);
+    case (motor_type::m60sg_35):
+    case (motor_type::m60bm_35):
+        return TQE_ADJUST(in_data, 0.007942, -0.18);
+    case (motor_type::m5043_20):
+        return TQE_ADJUST(in_data, 0.009660, -0.115);
+    case motor_type::mGeneral:
+        return TQE_ADJUST(in_data, 0.005000, 0);
     default:
-        ROS_ERROR("motor type setting error");
+        ROS_ERROR("Motor Type SettingMotor type setting error");
+        exit(-1);
         return int16_t();
     }
 }
 
-inline int16_t motor::rkp_float2int(float in_data, motor_type motor_type)
-{
-    switch (motor_type)
-    {
-    case motor_type::null:
-        ROS_ERROR("motor type not set,fresh command fault");
-        return int16_t();
-    case motor_type::_5046:
-        return (int16_t)(in_data * 0x7FF / (my_2pi * 1.6)); // kp~[0,160) max_tau 8Nm
-    case motor_type::_4538:
-        return (int16_t)((in_data * 0x7FF / (my_2pi * 0.5))); // kp~[0,50) max_tau 3Nm
-    case motor_type::_5047_36:
-        return (int16_t)((in_data * 0x7FF / (my_2pi * 0.8))); // kp~[0,62) max_tau 16Nm
-    case motor_type::_5047_9:
-        return (int16_t)((in_data * 0x7FF / (my_2pi * 0.165))); // kp~[0,16)  max_tau 4Nm
-    default:
-        ROS_ERROR("motor type setting error");
-        return int16_t();
-    }
-}
 
-inline int16_t motor::rkd_float2int(float in_data, motor_type motor_type)
+inline float motor::tqe_int2float(int16_t in_data, motor_type type)
 {
-    switch (motor_type)
+#define TQE_RESTORE(data, k, d) ((data) * (k) + (d))
+
+    switch (type)
     {
     case motor_type::null:
         ROS_ERROR("motor type not set,fresh command fault");
         return int16_t();
-    case motor_type::_5046:
-        return (int16_t)((in_data * 0x7FF / (my_2pi * 0.05))); // kd~[0,5.0)
-    case motor_type::_4538:
-        return (int16_t)((in_data * 0x7FF / (my_2pi * 0.005))); // kd~[0,0.5)
-    case motor_type::_5047_36:
-        return (int16_t)((in_data * 0x7FF / (my_2pi * 0.015))); // kd~[0,1.5)
-    case motor_type::_5047_9:
-        return (int16_t)((in_data * 0x7FF / (my_2pi * 0.0033))); // kd~[0,0.33)
+    case motor_type::m3536_32:
+        return TQE_RESTORE(in_data, 0.004581, -0.105);
+    case motor_type::m5046_20:
+        return TQE_RESTORE(in_data, 0.005280, -0.07);
+    case motor_type::m4538_19:
+        return TQE_RESTORE(in_data, 0.004450, -0.05);
+    case motor_type::m5047_36:
+        return TQE_RESTORE(in_data, 0.004938, -0.03313);
+    case motor_type::m5047_09:
+        return TQE_RESTORE(in_data, 0.005330, -0.034809);
+    case motor_type::m4438_30:
+        return TQE_RESTORE(in_data, 0.005256, -0.05);
+    case motor_type::m4438_32:
+        return TQE_RESTORE(in_data, 0.005584, -0.083);
+    case (motor_type::m5047_36_2):
+        return TQE_RESTORE(in_data, 0.008030, -0.35);
+    case (motor_type::m6056_36):
+        return TQE_RESTORE(in_data, 0.006770, -0.1);
+    case (motor_type::m7256_35):
+        return TQE_RESTORE(in_data,  0.00677, -0.244);
+    case (motor_type::m60sg_35):
+    case (motor_type::m60bm_35):
+        return TQE_RESTORE(in_data, 0.007942, -0.18);
+    case (motor_type::m5043_20):
+        return TQE_RESTORE(in_data, 0.009660, -0.115);
+    case motor_type::mGeneral:
+        return TQE_RESTORE(in_data, 0.005000, 0);
     default:
-        ROS_ERROR("motor type setting error");
+        ROS_ERROR("Motor Type SettingMotor type setting error");
+        exit(-1);
         return int16_t();
     }
 }
@@ -210,30 +238,44 @@ inline int16_t motor::rkd_float2int(float in_data, motor_type motor_type)
 
 inline float motor::pid_scale(float in_data, motor_type motor_type)
 {
+#define PID_SCALE(data, k)  (((data) / (k)))
+
     switch (motor_type)
     {
-    case motor_type::_5046:
-        in_data /= 0.533f;
-        break;
-    case motor_type::_4538:
-        in_data /= 0.4938f;
-        break;
-    case motor_type::_5047_36:
-        // in_data /= 0.4652f;
-        in_data /= 0.4938f;
-        break;
-    case motor_type::_5047_9:
-        in_data /= 0.547f;
-        break;
-    case motor_type::_4438_32:
-        in_data /= 0.5584f;
-        break;
-    case motor_type::_4438_8:  // 未测
-        in_data /= 0.5f;
-        break;
-    case motor_type::_7136_7:  // 未测
-        in_data /= 0.5f;
-        break;
+    case motor_type::null:
+        ROS_ERROR("motor type not set,fresh command fault");
+        return int16_t();
+    case motor_type::m3536_32:
+        return PID_SCALE(in_data, 0.004581);
+    case motor_type::m5046_20:
+        return PID_SCALE(in_data, 0.5330);
+    case motor_type::m4538_19:
+        return PID_SCALE(in_data, 0.4938);
+    case motor_type::m5047_36:
+        return PID_SCALE(in_data, 0.4938);
+    case motor_type::m5047_09:
+        return PID_SCALE(in_data, 0.5470);
+    case motor_type::m4438_30:
+        return PID_SCALE(in_data, 0.5256);
+    case motor_type::m4438_32:
+        return PID_SCALE(in_data, 0.5584);
+    case (motor_type::m5047_36_2):
+        return PID_SCALE(in_data, 0.8030);
+    case (motor_type::m6056_36):
+        return PID_SCALE(in_data, 0.6770);
+    case (motor_type::m7256_35):
+        return PID_SCALE(in_data,  0.00677);
+    case (motor_type::m60sg_35):
+    case (motor_type::m60bm_35):
+        return PID_SCALE(in_data, 0.7942);
+    case (motor_type::m5043_20):
+        return PID_SCALE(in_data, 0.9660);
+    case motor_type::mGeneral:
+        return PID_SCALE(in_data, 0.5000);
+    default:
+        ROS_ERROR("Motor Type SettingMotor type setting error");
+        exit(-1);
+        return int16_t();
     }
 
     return in_data;
@@ -263,13 +305,13 @@ inline int16_t motor::kp_float2int(float in_data, uint8_t type, motor_type motor
     int32_t tqe = 0;
     switch (type)
     {
-    case (0):
+    case (pos_vel_convert_type::radian_2pi):
         tqe = (int32_t)(in_data * 10 * my_2pi);
         break;
-    case (1):
+    case (pos_vel_convert_type::angle_360):
         tqe = (int32_t)(in_data * 10 * 360);
         break;
-    case (2):
+    case (pos_vel_convert_type::turns):
         tqe = (int32_t)(in_data * 10);
         break;
     default:
@@ -287,13 +329,13 @@ inline int16_t motor::ki_float2int(float in_data, uint8_t type, motor_type motor
     int32_t tqe = 0;
     switch (type)
     {
-    case (0):
+    case (pos_vel_convert_type::radian_2pi):
         tqe = (int32_t)(in_data * 10 * my_2pi);
         break;
-    case (1):
+    case (pos_vel_convert_type::angle_360):
         tqe = (int32_t)(in_data * 10 * 360);
         break;
-    case (2):
+    case (pos_vel_convert_type::turns):
         tqe = (int32_t)(in_data * 10);
         break;
     default:
@@ -311,13 +353,13 @@ inline int16_t motor::kd_float2int(float in_data, uint8_t type, motor_type motor
     int32_t tqe = 0;
     switch (type)
     {
-    case (0):
+    case (pos_vel_convert_type::radian_2pi):
         tqe = (int32_t)(in_data * 10 * my_2pi);
         break;
-    case (1):
+    case (pos_vel_convert_type::angle_360):
         tqe = (int32_t)(in_data * 10 * 360);
         break;
-    case (2):
+    case (pos_vel_convert_type::turns):
         tqe = (int32_t)(in_data * 10);
         break;
     default:
@@ -332,11 +374,11 @@ inline float motor::pos_int2float(int16_t in_data, uint8_t type)
 {
     switch (type)
     {
-    case (0):
+    case (pos_vel_convert_type::radian_2pi):
         return (float)(in_data * my_2pi / 10000.0);
-    case (1):
+    case (pos_vel_convert_type::angle_360):
         return (float)(in_data * 360.0 / 10000.0);
-    case (2):
+    case (pos_vel_convert_type::turns):
         return (float)(in_data / 10000.0);
     default:
         return float();
@@ -347,44 +389,12 @@ inline float motor::vel_int2float(int16_t in_data, uint8_t type)
 {
     switch (type)
     {
-    case (0):
+    case (pos_vel_convert_type::radian_2pi):
         return (float)(in_data * my_2pi / 4000.0);
-    case (1):
+    case (pos_vel_convert_type::angle_360):
         return (float)(in_data * 360.0 / 4000.0);
-    case (2):
+    case (pos_vel_convert_type::turns):
         return (float)(in_data / 4000.0);
-    default:
-        return float();
-    }
-}
-
-inline float motor::tqe_int2float(int16_t in_data, motor_type type)
-{
-    switch (type)
-    {
-    case (motor_type::null):
-        ROS_ERROR("motor type not set,fresh data fault");
-    case (motor_type::_5046):
-        return (float)(in_data * 0.005397) - 0.07;
-    case (motor_type::_4538):
-        return (float)(in_data * 0.00445) - 0.05;
-    case (motor_type::_5047_36):
-        // return (float)(in_data * 0.00462) - 0.05253;  // 老款
-        return (float)(in_data * 0.004938f) - 0.03313f;
-    case (motor_type::_5047_9):
-        return (float)(in_data * 0.00533) - 0.034809;
-    case (motor_type::_4438_32):
-        return (float)(in_data * 0.005584) - 0.083f;
-    case (motor_type::_4438_8):
-        return (float)(in_data * 0.0055); // 未测
-    case (motor_type::_7136_7):
-        return (float)(in_data * 0.006); // 未测
-    case (motor_type::_5047_36_2):
-        return (float)(in_data * 0.00803) - 0.35;
-    case (motor_type::_6056_36_2):
-        return (float)(in_data * 0.006077) - 0.1;
-    case motor_type::_5043_20:
-        return (float)(((in_data) * 0.00966f) - 0.115f);
     default:
         return float();
     }
@@ -414,11 +424,11 @@ void motor::fresh_cmd_int16(float position, float velocity, float torque, float 
         motor::pos_vel_MAXtqe(position, velocity, torque);
         break;
     case (7):
-        motor::pos_vel_tqe_rkp_rkd(position, velocity, torque, kp, kd);
-        break;
+        ROS_ERROR("This mode has beenThis mode is deprecated.");
+        exit(-1);
     case (8):
-        motor::pos_vel_rkp_rkd(position, velocity, kp, kd);
-        break;
+        ROS_ERROR("This mode has beenThis mode is deprecated.");
+        exit(-1);
     case (9):
         motor::pos_vel_tqe_kp_kd(position, velocity, torque, kp, kd);
         break;
@@ -427,6 +437,9 @@ void motor::fresh_cmd_int16(float position, float velocity, float torque, float 
         break;
     case (11):
         motor::pos_vel_acc(position, velocity, acc);
+        break;
+    case (12):
+        motor::pos_vel_tqe_kp_kd2(position, velocity, torque, kp, kd);
         break;
     default:
         ROS_ERROR("Incorrect setting of operation mode.");
@@ -550,50 +563,6 @@ void motor::pos_vel_MAXtqe(float position, float velocity, float torque_max)
     p_cdc_tx_message->data.pos_val_tqe[MEM_INDEX_ID(id)].tqe = tqe_float2int(torque_max, type_);
 }
 
-void motor::pos_vel_tqe_rkp_rkd(float position, float velocity, float torque, float rKp, float rKd)
-{
-    if (p_cdc_tx_message->head.s.cmd != MODE_POS_VEL_TQE_RKP_RKD)
-    {
-        p_cdc_tx_message->head.s.head = 0xF7;
-        p_cdc_tx_message->head.s.cmd = MODE_POS_VEL_TQE_RKP_RKD;
-        p_cdc_tx_message->head.s.len = id_max * sizeof(motor_pos_val_tqe_rpd_s);
-        for (uint8_t i = 0; i < id_max; i++)
-        {
-            p_cdc_tx_message->data.pos_val_tqe_rpd[i].pos = 0x8000;
-            p_cdc_tx_message->data.pos_val_tqe_rpd[i].val = 0x0000;
-            p_cdc_tx_message->data.pos_val_tqe_rpd[i].tqe = 0x0000;
-            p_cdc_tx_message->data.pos_val_tqe_rpd[i].rkp = 0x0000;
-            p_cdc_tx_message->data.pos_val_tqe_rpd[i].rkd = 0x0000;
-        }
-    }
-    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].pos = pos_float2int(position, pos_vel_type);
-    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].val = vel_float2int(velocity, pos_vel_type);
-    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].tqe = tqe_float2int(torque, type_);
-    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].rkp = rkp_float2int(rKp, type_);
-    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].rkd = rkd_float2int(rKd, type_);
-}
-
-void motor::pos_vel_rkp_rkd(float position, float velocity, float rKp, float rKd)
-{
-    if (p_cdc_tx_message->head.s.cmd != MODE_POS_VEL_RKP_RKD)
-    {
-        p_cdc_tx_message->head.s.head = 0xF7;
-        p_cdc_tx_message->head.s.cmd = MODE_POS_VEL_RKP_RKD;
-        p_cdc_tx_message->head.s.len = id_max * sizeof(motor_pos_val_rpd_s);
-        for (uint8_t i = 0; i < id_max; i++)
-        {
-            p_cdc_tx_message->data.pos_val_rpd[i].pos = 0x8000;
-            p_cdc_tx_message->data.pos_val_rpd[i].val = 0x0000;
-            p_cdc_tx_message->data.pos_val_rpd[i].rkp = 0x0000;
-            p_cdc_tx_message->data.pos_val_rpd[i].rkd = 0x0000;
-        }
-    }
-    p_cdc_tx_message->data.pos_val_rpd[MEM_INDEX_ID(id)].pos = pos_float2int(position, pos_vel_type);
-    p_cdc_tx_message->data.pos_val_rpd[MEM_INDEX_ID(id)].val = vel_float2int(velocity, pos_vel_type);
-    p_cdc_tx_message->data.pos_val_rpd[MEM_INDEX_ID(id)].rkp = rkp_float2int(rKp, type_);
-    p_cdc_tx_message->data.pos_val_rpd[MEM_INDEX_ID(id)].rkd = rkd_float2int(rKd, type_);
-}
-
 void motor::pos_vel_acc(float position, float velocity, float acc)
 {
     if (p_cdc_tx_message->head.s.cmd != MODE_POS_VEL_ACC)
@@ -636,6 +605,29 @@ void motor::pos_vel_tqe_kp_kd(float position, float velocity, float torque, floa
     p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].rkd = kd_float2int(kd, pos_vel_type, type_);
 }
 
+void motor::pos_vel_tqe_kp_kd2(float position, float velocity, float torque, float kp, float kd)
+{
+    if (p_cdc_tx_message->head.s.cmd != MODE_POS_VEL_TQE_KP_KD2)
+    {
+        p_cdc_tx_message->head.s.head = 0xF7;
+        p_cdc_tx_message->head.s.cmd = MODE_POS_VEL_TQE_KP_KD2;
+        p_cdc_tx_message->head.s.len = id_max * sizeof(motor_pos_val_tqe_rpd_s);
+        for (uint8_t i = 0; i < id_max; i++)
+        {
+            p_cdc_tx_message->data.pos_val_tqe_rpd[i].pos = 0x8000;
+            p_cdc_tx_message->data.pos_val_tqe_rpd[i].val = 0x0000;
+            p_cdc_tx_message->data.pos_val_tqe_rpd[i].tqe = 0x0000;
+            p_cdc_tx_message->data.pos_val_tqe_rpd[i].rkp = 0x0000;
+            p_cdc_tx_message->data.pos_val_tqe_rpd[i].rkd = 0x0000;
+        }
+    }
+    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].pos = pos_float2int(position, pos_vel_type);
+    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].val = vel_float2int(velocity, pos_vel_type);
+    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].tqe = tqe_float2int(torque, type_);
+    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].rkp = kp_float2int(kp, pos_vel_type, type_); 
+    p_cdc_tx_message->data.pos_val_tqe_rpd[MEM_INDEX_ID(id)].rkd = kd_float2int(kd, pos_vel_type, type_);
+}
+
 void motor::pos_vel_kp_kd(float position, float velocity, float kp, float kd)
 {
     if (p_cdc_tx_message->head.s.cmd != MODE_POS_VEL_KP_KD)
@@ -658,8 +650,10 @@ void motor::pos_vel_kp_kd(float position, float velocity, float kp, float kd)
 }
 
 
-void motor::fresh_data(int16_t position, int16_t velocity, int16_t torque)
+void motor::fresh_data(uint8_t mode, uint8_t fault, int16_t position, int16_t velocity, int16_t torque)
 {
+    data.mode = mode;
+    data.fault = fault;
     p_msg.pos = data.position = pos_int2float(position, pos_vel_type);
     p_msg.vel = data.velocity = vel_int2float(velocity, pos_vel_type);
     p_msg.tau = data.torque = tqe_int2float(torque, type_);
@@ -771,4 +765,33 @@ motor_back_t* motor::get_current_motor_state()
 std::string motor::get_motor_name()
 {
     return motor_name;
+}
+
+
+void motor::set_version(cdc_rx_motor_version_s &v)
+{
+    version.id = v.id;
+    version.major = v.major;
+    version.minor = v.minor;
+    version.patch = v.patch;
+
+    // ROS_INFO("ID: %d, version = %d.%d.%d", version.id, version.major, version.minor, version.patch);
+}
+
+
+cdc_rx_motor_version_s& motor::get_version()
+{
+    return version;
+}
+
+
+void motor::print_version()
+{
+    ROS_INFO("ID: %d, version = %d.%d.%d", version.id, version.major, version.minor, version.patch);
+}
+
+
+void motor::set_type(motor_type t)
+{
+    type_ = t;
 }

@@ -12,7 +12,7 @@ namespace yesense{
 YesenseDriver::YesenseDriver(ros::NodeHandle& nh, ros::NodeHandle& nh_private)
     : nh_(nh)
     , nh_private_(nh_private)
-    , port_("/dev/ttyUSB0")
+    , port_("/dev/ttyS7")
     , baudrate_(460800)
     , buffer_size_(4096)
     , wait_response_flag_(false)
@@ -226,24 +226,24 @@ void YesenseDriver::initSerial()
     {
         try
         {
-            bool flag = false;
+            // bool flag = false;
 
-            std::vector<std::string> ports = list_serial_ports(port_);
-            for (const std::string& port : ports) 
-            {
-                if (serial_pid_vid(port.c_str()) > 0)
-                {
-                    ROS_INFO("IMU serial port:%s, rate:%d", port.c_str(), baudrate_);
-                    port_ = port;
-                    flag = true;
-                    break;
-                }
-            }
-            if (flag == false)
-            {
-                ROS_ERROR("Cannot find the IMU serial port number, please check if the USB connection is normal");
-                exit(-1);
-            }
+            // std::vector<std::string> ports = list_serial_ports(port_);
+            // for (const std::string& port : ports) 
+            // {
+            //     if (serial_pid_vid(port.c_str()) > 0)
+            //     {
+            //         ROS_INFO("IMU serial port:%s, rate:%d", port.c_str(), baudrate_);
+            //         port_ = port;
+            //         flag = true;
+            //         break;
+            //     }
+            // }
+            // if (flag == false)
+            // {
+            //     ROS_ERROR("Cannot find the IMU serial port number, please check if the USB connection is normal");
+            //     exit(-1);
+            // }
 
             serial_.setPort(port_);
             serial_.setBaudrate(baudrate_);

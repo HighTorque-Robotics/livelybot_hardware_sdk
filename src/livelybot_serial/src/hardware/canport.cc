@@ -1,4 +1,4 @@
-#include "hardware/canport.h"
+#include "canport.h"
 
 
 
@@ -48,6 +48,7 @@ canport::canport(int _CANport_num, int _CANboard_num, lively_serial *_ser) : ser
     ser->init_map_motor(&Map_Motors_p);
     ser->port_version_init(&port_version);
     ser->port_motors_id_init(&motors_id, &mode_flag);
+    ser->port_fun_v_init(&fun_v);
 }
 
 
@@ -64,7 +65,7 @@ float canport::set_motor_num()
     cdc_tr_message.data.data[0] = motor_num;
     
     int t = 0;
-    #define MAX_DALAY 10000  // 单位ms
+    #define MAX_DALAY 1000  // 单位ms
     while (t++ < MAX_DALAY)
     {
         motor_send_2();
@@ -78,7 +79,7 @@ float canport::set_motor_num()
 
     if (t < MAX_DALAY)
     {
-        ROS_INFO("\033[1;32mCANboard(%d) version is: %.1fv\033[0m", canboard_id, port_version);
+        ROS_INFO("\033[1;32mCANboard(%d) version is: v%.1f\033[0m", canboard_id, port_version);
     }
     else
     {
@@ -391,6 +392,71 @@ void canport::send_get_motor_state_cmd()
 }
 
 
+void canport::send_get_motor_state_cmd2()
+{
+    if (cdc_tr_message.head.s.cmd != MODE_MOTOR_STATE2)
+    {
+        cdc_tr_message.head.s.head = 0XF7;
+        cdc_tr_message.head.s.cmd = MODE_MOTOR_STATE2;
+        cdc_tr_message.head.s.len = 1;
+        memset(&cdc_tr_message.data, 0, cdc_tr_message.head.s.len);
+    }
+    cdc_tr_message.data.data[0] = 0x7f;
+    motor_send_2();
+}
+
+
+void canport::send_get_motor_version_cmd()
+{
+    if (cdc_tr_message.head.s.cmd != MODE_MOTOR_VERSION)
+    {
+        cdc_tr_message.head.s.head = 0XF7;
+        cdc_tr_message.head.s.cmd = MODE_MOTOR_VERSION;
+        cdc_tr_message.head.s.len = 1;
+        memset(&cdc_tr_message.data, 0, cdc_tr_message.head.s.len);
+    }
+    cdc_tr_message.data.data[0] = 0x7f;
+    motor_send_2();
+}
+
+
+void canport::set_fun_v(fun_version v)
+{
+    if (cdc_tr_message.head.s.cmd != MODE_FUN_V)
+    {
+        cdc_tr_message.head.s.head = 0XF7;
+        cdc_tr_message.head.s.cmd = MODE_FUN_V;
+        cdc_tr_message.head.s.len = 1;
+        memset(&cdc_tr_message.data, 0, cdc_tr_message.head.s.len);
+    }
+    cdc_tr_message.data.data[0] = v;
+
+    int t = 0;
+    #define MAX_DALAY 1000  // 单位ms
+    while (t++ < MAX_DALAY)
+    {
+        motor_send_2();
+        ros::Duration(0.02).sleep();
+        if (v == fun_v)
+        {
+            // ROS_INFO("\033[1;32m ttt %d\033[0m", t);
+            break;
+        }
+    }
+
+    if (t == MAX_DALAY)
+    {
+        ROS_ERROR("CANboard(%d) CANport(%d) fun_v err!!!", canboard_id, canport_id);
+    }
+}
+
+
+void canport::set_data_reset()
+{
+    memset(cdc_tr_message.data.data, 0xFFFFFFFF, CDC_TR_MESSAGE_DATA_LEN / sizeof(int));
+}
+
+
 void canport::set_time_out(int16_t t_ms)
 {
     if (cdc_tr_message.head.s.cmd != MODE_TIME_OUT)
@@ -440,4 +506,36 @@ int canport::get_canboard_id()
 int canport::get_canport_id()
 {
     return canport_id;
+}
+
+
+void canport::canboard_bootloader()
+{
+    if (cdc_tr_message.head.s.cmd != MODE_BOOTLOADER)
+    {
+        cdc_tr_message.head.s.head = 0XF7;
+        cdc_tr_message.head.s.cmd = MODE_BOOTLOADER;
+        cdc_tr_message.head.s.len = 1;
+        memset(&cdc_tr_message.data, 0, cdc_tr_message.head.s.len);
+    }
+    
+    motor_send_2();
+    motor_send_2();
+    motor_send_2();
+}
+
+
+void canport::canboard_fdcan_reset()
+{
+    if (cdc_tr_message.head.s.cmd != MODE_FDCAN_RESET)
+    {
+        cdc_tr_message.head.s.head = 0XF7;
+        cdc_tr_message.head.s.cmd = MODE_FDCAN_RESET;
+        cdc_tr_message.head.s.len = 1;
+        memset(&cdc_tr_message.data, 0, cdc_tr_message.head.s.len);
+    }
+    
+    motor_send_2();
+    motor_send_2();
+    motor_send_2();
 }

@@ -2,12 +2,12 @@
 
 launch文件作用是在一个脚本文件内启动若干个ros节点，定义ros参数。
 
-1. 控制机器人上的电机，主要使用roslaunch脚本。sdk的roslaunch脚本主要放在livelybot_robot/src/livelybot_bringup/launch路径下，以test_motor_run.launch脚本为例，编写launch文件如下：
+1. 控制机器人上的电机，主要使用roslaunch脚本。sdk的roslaunch脚本主要放在livelybot_robot/src/livelybot_bringup/launch路径下，以motor_move_zero.launch脚本为例，编写launch文件如下：
 
 ```
 <launch>
   <include file='$(find livelybot_description)/launch/livelybot_description_robot.launch' />
-  <node pkg="livelybot_serial" name="test_motor_run" type="test_motor_run" output="screen" />
+  <node pkg="livelybot_bringup" name="motor_move_zero" type="motor_move_zero" output="screen" />
 </launch> 
 ```
 
@@ -37,7 +37,7 @@ launch文件作用是在一个脚本文件内启动若干个ros节点，定义ro
     <rosparam file="$(find livelybot_description)/robot_param/$(arg dof_type)dof_$(arg mcu_type)_model_$(arg model_type)_$(arg design)_params.yaml" command="load" />
     ```
     这一行内容表示把提供的机器人配置文件内的参数导入到ros的工作空间内，那么在代码里的robot类初始化时，便可以读取到配置文件里的参数，那么就可以使用一套代码，适应不同的机器人电机的连接方式以及电机数量。
-3. 第三行表示在livelybot_serial包下启动test_motor_run节点，并输出到屏幕。功能上让电机运动到每个关节零位。
+3. 第三行表示在livelybot_bringup包下启动motor_move_zero节点，并输出到屏幕。功能上让电机运动到每个关节零位。
   ```
-  <node pkg="livelybot_serial" name="test_motor_run" type="test_motor_run" output="screen" />
+  <node pkg="livelybot_bringup" name="motor_move_zero" type="motor_move_zero" output="screen" />
   ```
